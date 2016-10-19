@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>シューティングゲーム</title>
+<style>
+#canvas_test{                /* id名をセレクタとしてスタイルを指定 */
+	width: 700px;              /* 横幅を指定 */
+	height: 500px;             /* 縦幅を指定 */
+	border :1px solid #000000; /* 枠線を指定 */
+	background-color:black	/* 背景色 */
+}
+body {
+    	text-align: center;  	/*テキスト中央*/
+}
+div#wrapper {
+	width: 800px;
+	margin: 0 auto;
+    	text-align: left;		/*左揃え*/
+    	/*border: 1px solid #FF0000;*/
+}
+
+
+</style>
+<!-- ステージ設定読み込み-->
+<script src="css_and_js/playerobj.js"></script>
+<script src="css_and_js/enemyobj.js"></script>
+<script src="css_and_js/gameobj.js"></script>
+<script src="css_and_js/parameter.js"></script>
+<script src="css_and_js/subfunction.js"></script>
+<script src="css_and_js/movefunction.js"></script>
+<script src="css_and_js/shotfunction.js"></script>
+<script src="css_and_js/stage1.js"></script>
+<script>
+
+	//requestAnimationFrame関数の定義
+	var requestAnimationFrame
+      = window.requestAnimationFrame ||                 // 正式な実装
+        window.webkitRequestAnimationFrame ||           // Google Chrome、Safari向け
+        window.mozRequestAnimationFrame ||              // Firefox向け
+        window.oRequestAnimationFrame ||                // Opera向け
+        window.msRequestAnimationFrame ||               // InternetExplore向け
+        function (callback, element) { window.setTimeout(callback, 1000 / 60); }; // 未対応ブラウザ向け
+
+	////////////////////////////////////////////////////////////////////
+	// windowイベントの定義
+	////////////////////////////////////////////////////////////////////
+	//HTML文書読み込み完了後に実行するイベントの定義
+	window.addEventListener('load', function () {
+		resizeTo(535, 558); //ウィンドウサイズの指定
+		drawStart();        //描画開始関数
+	});
+	////////////////////////////////////////////////////////////////////
+	// 描画開始関数の定義
+	////////////////////////////////////////////////////////////////////
+	var canvasElement; //canvas要素オブジェクト
+	var context;       //コンテキストオブジェクト
+	var backcontext;	//背景コンテキストオブジェクト
+	var HPcontext;	//HPゲージコンテキスト
+	function drawStart() {
+		canvasElement = document.getElementById('canvas_test');  //canvas要素の取得
+		canvasElement.width = canvasElement.clientWidth;             //描画横幅の指定
+		canvasElement.height = canvasElement.clientHeight;           //描画縦幅の指定
+		 //コンテキストの取得
+		context = canvasElement.getContext('2d');
+		backcontext = document.getElementById('canvas_test').getContext('2d');
+		HPcontext = document.getElementById('canvas_test').getContext('2d');
+
+		//ゲーム開始待ち
+		waitstart();
+	}
+	////////////////////////////////////////////////////////////////////
+	// ループ関数の定義
+	////////////////////////////////////////////////////////////////////
+	var time=0;
+	function loop() {
+
+		///////////////////bgm再生////////////////////////////////
+		sound("bgm",false);
+
+		///////////////////canvasサイズを取得し初期化////////////////////////////////
+		var width = game.width;   //横幅
+		var height = game.height; //縦幅
+		context.clearRect(0, 0, width+game.scorewidth, height); //canvasの全領域をクリアー
+
+		///////////////////最初に画像データをロード////////////////////////////////
+		//ループ開始時
+		if(!time){
+			//背景画像
+			backcontext.globalAlpha=1;	//透明度
+  			backcontext.drawImage(game.backimage, 0, 0);	// canvas上に描画
+  			imageData = backcontext.getImageData(0,0,width,height);	// 描写RGBデータをストック
+			//自機画像
+			context.drawImage(player.image,player.x,player.y);   //canvas要素への出力
+			player.width=player.image.width;	//自機の横幅
+			player.height=player.image.height;	//自機の縦幅
+			//敵機画像
+			for(i=0;i<enemy_N;i++){
+				context.drawImage(enemy[i].image,enemy[i].x,enemy[i].y);   //canvas要素への出力
+				enemy[i].width=enemy[i].image.width;	//敵機の横幅
+				enemy[i].height=enemy[i].image.height;	//敵機の縦幅
+			}
+		}
+		//通常ループ時
+		else	backgound(width,height);	//縦スクロールした背景画像を描写
+
+		///////////////////ステージイベント////////////////////////////////
+		if(time<200)	entrystage();
+		else stage();
+
+		///////////////////キーボード入力////////////////////////////////
+		// キーボードを押したときに実行
+		if(document.addEventListener)	document.addEventListener("keydown" , funcKey);
+		// キーボードを離したときに実行
+		if(document.addEventListener)	document.addEventListener("keyup" , funcKeyclear);
+
+		///////////////////自機移動処理////////////////////////////////
+		if(left_flag== true )  player.x-=4;
+		if( right_flag == true )  player.x+=4;
+		if( up_flag == true )  player.y-=4;
+		if( down_flag == true )  player.y+=4;
+		//壁処理
+		if(player.x<=0)	player.x+=4;
+		if(player.x>=width-player.width)	player.x-=4;
+		if(player.y<=0)	player.y+=4;
+		if(player.y>=height-player.height)	player.y-=4;
+
+		///////////////////自機ショット処理////////////////////////////////
+		//新規ショット処理
+		//j=0から昇順に最初の偽のplayer.shot[j].move.flagを真にしていく
+		//そのため必ずしも前のショットと番号は連続しない
+		if((player.shot_start)&& (game.playerSHtimer<1)){
+			//shot音再生
+			sound("shot",true);
+			//昇順に偽フラグを検索
+			for(j=0;j<player.shot_N;j++){
+				if(!player.shot[j].move.flag){
+					player.shot[j].move.flag=true;
+					game.playerSHtimer=player.shot_blank;	//次のショットまでのブランク設定
+					break;	//検索終了
+				}
+			}
+		}
+		//継続ショット処理
+		for(j=0;j<player.shot_N;j++){
+			if(player.shot[j].move.flag){
+				if(player.shot[j].x<0){
+					//新規ショットを画面上に移動
+					player.shot[j].x=player.x+player.width/2;
+					player.shot[j].y=player.y-player.shot[j].R;
+				}
+				//ショットグラフィック描写
+				drawshot(player.shot[j]);
+				//ショット通常移動
+				player.shot[j].move.y-=5;
+			}
+			//範囲外のショットを消去
+			if(!(In_range(player.shot[j].x+player.shot[j].move.x,player.shot[j].y+player.shot[j].move.y,width,0,height,0))){
+				shot_terminal(player.shot[j]);
+			}
+		}
+
+		///////////////////自機の描写処理////////////////////////////////
+		//モーション変更
+		player.image=charamotion(GLangel,time);
+		if(player.damageTM<1){		//通常モード
+			//canvasへキャラ描写
+			drawbody(player);
+		}else{					//ダメージ免除モード
+			//canvasへキャラ描写
+			if(!(time%5))	drawbody(player);
+		}
+
+		///////////////////自機撃墜処理////////////////////////////////
+		for(i=0;i<enemy_N;i++){
+			for(j=0;j<enemy[i].shot_N;j++){
+				//通常判定モード
+				if(player.damageTM<1){
+					//当たり判定
+					//if(In_range(enemy[i].shot[j].x+enemy[i].shot[j].move.x,enemy[i].shot[j].y+enemy[i].shot[j].move.y,player.x+player.width,player.x,player.y+player.height,player.y))
+					if(In_range(enemy[i].shot[j].x+enemy[i].shot[j].move.x,enemy[i].shot[j].y+enemy[i].shot[j].move.y,player.x+player.width*3/4,player.x+player.width/4,player.y+player.height,player.y+player.height/2)){
+						player.HP--;				//ダメージ
+						player.damageTM=300;		//ダメージ免除タイマ設定（5秒間）
+						shot_terminal(enemy[i].shot[j]);	//ショット消去
+						if(player.HP<0){
+							//自機を画面上から除去
+							player.x=-100;
+							player.y=-100;
+							game.gameover_flag=true;
+						}
+					}
+				}
+			}
+		}
+
+		for(i=0;i<enemy_N;i++){
+			for(j=0;j<enemy[i].shot_N;j++){
+				if(enemy[i].shot[j].move.flag){
+					//フィールド範囲内
+					if((In_range(enemy[i].shot[j].x+enemy[i].shot[j].move.x,enemy[i].shot[j].y+enemy[i].shot[j].move.y,width,0,height,0))){
+						//ショットグラフィック描写
+						drawshot(enemy[i].shot[j]);
+					}
+				}
+				//範囲外のショットを消去
+				if(!(In_range(enemy[i].shot[j].x+enemy[i].shot[j].move.x,enemy[i].shot[j].y+enemy[i].shot[j].move.y,width,0,height,0))){
+					shot_terminal(enemy[i].shot[j]);
+				}
+			}
+
+			///////////////////敵機の描写処理////////////////////////////////
+			//撃墜されてない
+			if(!(enemy[i].kill_flag)){
+				//フィールド範囲内
+				if(In_range(enemy[i].x+(enemy[i].width/2),enemy[i].y+(enemy[i].height/2),game.width,0,game.height,0)){
+					//モーション変更
+					enemy[i].image=charamotion(devil,time);
+					//canvasへキャラを描写
+					drawbody(enemy[i]);
+				}
+			}
+		}
+
+		///////////////////敵機の撃破処理////////////////////////////////
+		for(i=0;i<enemy_N;i++){
+			for(j=0;j<player.shot_N;j++){
+				if(In_range(player.shot[j].x+player.shot[j].move.x,player.shot[j].y+player.shot[j].move.y,enemy[i].x+enemy[i].width,enemy[i].x,enemy[i].y+enemy[i].height,enemy[i].y)&&player.shot[j].move.flag){
+					enemy[i].HP--;		//ダメージ処理
+					shot_terminal(player.shot[j]);	//ショット消去
+					enemy[i].alpha=0;		//次フレームから透明表示
+					if(enemy[i].HP<1){
+						killenemy(enemy[i]);		//撃破処理
+						//score加算
+						killscoreadd(enemy[i].killscore);
+						//ゲームクリア判定
+						game.gameclear_flag=true;	//判定のための一時的な真
+						//and論理で判定
+						for(k=0;k<enemy_N;k++)		game.gameclear_flag*=enemy[k].kill_flag
+						if(game.gameclear_flag){
+							//ゲームクリア処理
+							context.fillStyle = "yellow";      //塗りつぶし色を指定
+							context.font="34px 'Times New Roman'";
+							context.textAlign="center";
+							context.fillText("GAME CLEAR",width/2,height/2);
+						}
+					}
+				}
+				else{
+					if(!(time%3))	enemy[i].alpha=1;		//透明表示解除
+				}
+			}
+		}
+
+		///////////////////ゲームステータス////////////////////////////////
+		scoreanimation(game.score);
+		statusdisplay();
+
+
+		time++;	//時間経過
+		if(game.playerSHtimer>0)	game.playerSHtimer--;	//自機ショットのブランクをデクリメント
+		if(player.damageTM>0)	player.damageTM--;		//ダメージタイマをデクリメント
+		for(var i=0;i<enemy_N;i++){
+			if(game.enemySHtimer[i]>0)	game.enemySHtimer[i]--;	//敵機ショットのブランクをデクリメント
+		}
+		if(!((game.gameover_flag)||(game.gameclear_flag)))	requestAnimationFrame(loop);     //loop関数の呼び出し
+		else	exitloop();     //終了時loop関数の呼び出し
+	}
+</script>
+</head>
+<body>
+<div id="wrapper">
+<p><canvas id="canvas_test"></canvas></p>
+[矢印キー]移動		[Zキー連打]SHOT<br>
+GAMEOVER or GAMECLEAR したらリロードでニューゲーム<br>
+<a href="http://musmus.main.jp" title="フリーBGM素材/musmus” target="_blank">フリー音楽素材/musmus</a>
+</div>
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-85703583-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>
